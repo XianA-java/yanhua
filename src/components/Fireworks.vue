@@ -71,28 +71,48 @@ const isMultiColor = ref(false)
 const ws = ref(null)
 const isConnected = ref(false)
 
+// 在窗口大小变化时更新画布大小
+window.addEventListener('resize', () => {
+  canvas.value.width = window.innerWidth
+  canvas.value.height = window.innerHeight
+  bgCanvas.value.width = window.innerWidth
+  bgCanvas.value.height = window.innerHeight
+})
+
 // 连接 WebSocket
 function connectWebSocket() {
+  // 使用 Render 提供的 WSS 地址
   const wsUrl = `wss://fireworks-server.onrender.com`
-
-  const ws = new WebSocket(wsUrl)
-  ws.onopen = () => {
-    console.log('Connected to WebSocket server')
-  }
-  ws.onerror = (error) => {
-    console.error('WebSocket error:', error)
-  }
-
-  ws.onclose = () => {
-    console.log('Disconnected from server')
+  
+  try {
+    ws.value = new WebSocket(wsUrl)
+    
+    ws.value.onopen = () => {
+      console.log('Connected to WebSocket server')
+      isConnected.value = true
+    }
+    
+    ws.value.onerror = (error) => {
+      console.error('WebSocket error:', error)
+      isConnected.value = false
+    }
+    
+    ws.value.onclose = () => {
+      console.log('Disconnected from server')
+      isConnected.value = false
+      // 尝试重新连接
+      setTimeout(connectWebSocket, 3000)
+    }
+    
+    ws.value.onmessage = (event) => {
+      const data = JSON.parse(event.data)
+      handleRemoteFirework(data)
+    }
+  } catch (error) {
+    console.error('WebSocket connection error:', error)
     isConnected.value = false
     // 尝试重新连接
     setTimeout(connectWebSocket, 3000)
-  }
-
-  ws.onmessage = (event) => {
-    const data = JSON.parse(event.data)
-    handleRemoteFirework(data)
   }
 }
 
