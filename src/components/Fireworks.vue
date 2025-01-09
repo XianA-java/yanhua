@@ -1,5 +1,8 @@
 <template>
-  <div class="fireworks-container">
+  <div class="fireworks-container"
+       @touchstart="handleTouchStart"
+       @touchmove="handleTouchMove"
+       @touchend="handleTouchEnd">
     <audio id="launchSound" src="/sounds/launch.mp3" preload="auto"></audio>
     <audio id="explosionSound" src="/sounds/explosion.mp3" preload="auto"></audio>
 
@@ -25,9 +28,30 @@
       <span class="control-icon">{{ isControlPanelOpen ? '×' : '☰' }}</span>
     </div>
 
-    <!-- 修改按钮面板 -->
+    <!-- 桌面端按钮 -->
+    <div class="desktop-buttons">
+      <button @click="initAudio" class="launch-btn sound-btn" v-if="!isAudioInitialized">
+        点击启用音效
+      </button>
+      <button @click="toggleSound" class="launch-btn sound-btn" v-else>
+        {{ isSoundEnabled ? '🔊 音效开启' : '🔈 音效关闭' }}
+      </button>
+      <button @click="toggleColorMode" class="launch-btn">
+        {{ isMultiColor ? '🌈 炫彩模式' : '🎨 单色模式' }}
+      </button>
+      <button @click="addFirework('normal')" class="launch-btn">普通烟花</button>
+      <button @click="addFirework('circle')" class="launch-btn">环形烟花</button>
+      <button @click="addFirework('heart')" class="launch-btn">心形烟花</button>
+      <button @click="addFirework('spiral')" class="launch-btn">螺旋烟花</button>
+      <button @click="openTextInput" class="launch-btn">自定义文字</button>
+    </div>
+
+    <!-- 修改移动端控制面板 -->
     <transition name="slide-up">
       <div class="mobile-control-panel" v-show="isControlPanelOpen">
+        <div class="panel-header">
+          <div class="handle-bar"></div>
+        </div>
         <div class="button-grid">
           <button @click="initAudio" class="launch-btn sound-btn" v-if="!isAudioInitialized">
             点击启用音效
@@ -47,6 +71,11 @@
       </div>
     </transition>
 
+    <!-- 添加触摸提示 -->
+    <div class="touch-hint" v-if="showTouchHint">
+      点击屏幕任意位置发射烟花
+    </div>
+
     <!-- 添加连接状态指示器 -->
     <div class="connection-status" :class="{ connected: isConnected }">
       {{ isConnected ? '🟢 已连接' : '🔴 未连接' }}
@@ -59,8 +88,8 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 
 const canvas = ref(null)
 const bgCanvas = ref(null)
-const width = window.innerWidth
-const height = window.innerHeight
+let width = window.innerWidth
+let height = window.innerHeight
 let ctx = null
 let bgCtx = null
 let particles = []
@@ -83,7 +112,7 @@ const ws = ref(null)
 const isConnected = ref(false)
 
 // 在 script setup 部分添加粒子池管理
-const PARTICLE_POOL_SIZE = 5000
+const PARTICLE_POOL_SIZE = 4000
 const particlePool = []
 
 // 添加控制面板状态
@@ -95,11 +124,43 @@ const toggleControlPanel = () => {
 }
 
 // 在窗口大小变化时更新画布大小
-window.addEventListener('resize', () => {
+const handleResize = () => {
+  // 更新宽高变量
+  width = window.innerWidth
+  height = window.innerHeight
+
+  // 更新画布尺寸
   canvas.value.width = window.innerWidth
   canvas.value.height = window.innerHeight
   bgCanvas.value.width = window.innerWidth
   bgCanvas.value.height = window.innerHeight
+
+  // 重新初始化背景
+  if (bgCtx) {
+    bgCtx.fillStyle = 'black'
+    bgCtx.fillRect(0, 0, width, height)
+  }
+
+  // 更新所有星星的位置
+  stars.forEach(star => {
+    if (star.x > width || star.y > height) {
+      star.reset()
+    }
+  })
+
+  // 更新所有流星的位置
+  meteors.forEach(meteor => {
+    if (meteor.x > width || meteor.y > height) {
+      meteor.reset()
+    }
+  })
+}
+
+// 添加防抖处理
+let resizeTimeout
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimeout)
+  resizeTimeout = setTimeout(handleResize, 100)
 })
 
 // 连接 WebSocket
@@ -317,7 +378,7 @@ class Particle {
     this.type = type
     this.active = true // 添加活跃状态标记
     this.lifetime = 0  // 添加生命周期计数器
-    this.maxLifetime = type === 'text' ? 200 : 100 // 根据类型设置最大生命周期
+    this.maxLifetime = type === 'text' ? 300 : 200 // 延长粒子的生命周期
     
     const baseSpeed = type === 'normal' ? 12 : 6
     const spread = type === 'normal' ? 1 : 0.5
@@ -382,10 +443,10 @@ class Particle {
       this.originalY = this.y
       this.fadeDelay = 50     // 延迟消失
       this.fadeCounter = 0    // 计数器
-      this.alphaDecay = 0.005 // 更慢的消失速度
+      this.alphaDecay = 0.003 // 进一步减慢消失速度
     } else {
-      // 非文字粒子保持原有的 alpha 衰减速度
-      this.alphaDecay = 0.01
+      // 非文字粒子的衰减速度
+      this.alphaDecay = 0.005
     }
     
     // 减小随机偏移
@@ -401,8 +462,8 @@ class Particle {
   }
 
   update() {
-    this.lifetime++
-    if (this.lifetime >= this.maxLifetime) {
+    // 只有当粒子完全离开屏幕时才标记为非活跃
+    if (this.y > height + 50) {
       this.active = false
       return false
     }
@@ -427,19 +488,19 @@ class Particle {
         // 保持完全不透明
         this.alpha = 1
       } else {
-        // 延迟后开始缓慢移动和消失
+        // 调整文字粒子的移动和消失
         this.x += this.vx * 0.5
         this.y += this.vy * 0.5
-        this.vy += 0.05  // 减小重力效果
+        this.vy += 0.03  // 进一步减小重力效果
         this.vx *= 0.99
         this.vy *= 0.99
         this.alpha -= this.alphaDecay
       }
     } else {
-      // 非文字粒子保持原有的更新逻辑
+      // 调整普通粒子的移动
       this.x += this.vx
       this.y += this.vy
-      this.vy += 0.1
+      this.vy += 0.05  // 减小重力效果
       this.vx *= 0.99
       this.vy *= 0.99
       
@@ -460,10 +521,8 @@ class Particle {
       }
     }
 
-    // 检查粒子是否超出屏幕边界
-    if (this.x < -50 || this.x > width + 50 || 
-        this.y < -50 || this.y > height + 50 || 
-        this.alpha <= 0) {
+    // 只检查水平方向的边界，允许粒子继续下落
+    if (this.x < -100 || this.x > width + 100) {
       this.active = false
       return false
     }
@@ -618,13 +677,13 @@ function createFirework(x, y, type = 'normal', text = '') {
       if (particle) particles.push(particle)
     })
     
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 50; i++) {
       const color = isMultiColor.value ? getRandomColor() : '#ffffff'
       const particle = getParticleFromPool(x, y, color, 'normal')
       if (particle) particles.push(particle)
     }
   } else {
-    const particleCount = type === 'normal' ? 120 : 200
+    const particleCount = type === 'normal' ? 150 : 250
     
     if (type === 'normal') {
       for (let i = 0; i < particleCount; i++) {
@@ -641,8 +700,8 @@ function createFirework(x, y, type = 'normal', text = '') {
       }
     }
     
-    // 添加装饰粒子
-    for (let i = 0; i < 30; i++) {
+    // 增加装饰粒子数量
+    for (let i = 0; i < 50; i++) {
       const color = isMultiColor.value ? getRandomColor() : '#ffffff'
       const particle = getParticleFromPool(x, y, color, 'normal')
       if (particle) particles.push(particle)
@@ -694,9 +753,9 @@ function animate() {
 }
 
 // 修改发射烟花的函数
-function addFirework(type = 'normal', text = '') {
-  const targetX = Math.random() * width
-  const targetY = height * 0.3
+function addFirework(type = 'normal', text = '', x = null, y = null) {
+  const targetX = x ?? Math.random() * width
+  const targetY = y ?? height * 0.3
   
   // 发送烟花数据到服务器
   if (isConnected.value) {
@@ -922,6 +981,59 @@ function createStarryBackground() {
   }
 }
 
+// 添加新的响应式变量
+const showTouchHint = ref(true)
+const touchStartY = ref(0)
+const touchStartTime = ref(0)
+const isPanelDragging = ref(false)
+
+// 添加触摸相关函数
+const handleTouchStart = (e) => {
+  if (e.target.closest('.mobile-control-panel') || 
+      e.target.closest('.control-button') ||
+      e.target.closest('.text-input-container')) {
+    // 如果触摸的是控制面板或其他UI元素，不处理
+    return
+  }
+
+  touchStartY.value = e.touches[0].clientY
+  touchStartTime.value = Date.now()
+  
+  // 隐藏触摸提示
+  showTouchHint.value = false
+}
+
+const handleTouchMove = (e) => {
+  if (isPanelDragging.value) {
+    const deltaY = e.touches[0].clientY - touchStartY.value
+    // 处理面板拖动逻辑
+  }
+}
+
+const handleTouchEnd = (e) => {
+  if (e.target.closest('.mobile-control-panel') || 
+      e.target.closest('.control-button') ||
+      e.target.closest('.text-input-container')) {
+    return
+  }
+
+  const touchEndTime = Date.now()
+  const touchDuration = touchEndTime - touchStartTime.value
+
+  // 如果是快速点击（小于300ms），发射烟花
+  if (touchDuration < 300) {
+    const rect = e.target.getBoundingClientRect()
+    const x = e.changedTouches[0].clientX
+    const y = e.changedTouches[0].clientY - rect.top
+    
+    // 随机选择烟花类型
+    const types = ['normal', 'circle', 'heart', 'spiral']
+    const randomType = types[Math.floor(Math.random() * types.length)]
+    
+    addFirework(randomType, '', x, y)
+  }
+}
+
 onMounted(() => {
   // 设置背景 canvas
   bgCtx = bgCanvas.value.getContext('2d')
@@ -1116,16 +1228,34 @@ canvas {
     bottom: 0;
     left: 0;
     width: 100%;
-    background: rgba(0, 0, 0, 0);
+    background: rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(10px);
     padding: 20px 15px calc(env(safe-area-inset-bottom) + 20px);
     border-top: 1px solid rgba(255, 255, 255, 0.1);
     z-index: 1000;
+    border-radius: 20px 20px 0 0;
+    touch-action: none;
+  }
+
+  .panel-header {
+    width: 100%;
+    height: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+
+  .handle-bar {
+    width: 40px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 2px;
   }
 
   .button-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    grid-template-columns: repeat(4, 1fr);
     gap: 10px;
     max-width: 600px;
     margin: 0 auto;
@@ -1137,8 +1267,8 @@ canvas {
     white-space: nowrap;
     margin: 0;
     width: 100%;
-    height: 100%;
-    min-height: 60px;
+    height: 50px;
+    min-height: 50px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1153,6 +1283,36 @@ canvas {
     top: 20px;
     width: 90%;
     max-width: 300px;
+  }
+
+  .touch-hint {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(255, 255, 255, 0.2);
+    padding: 10px 20px;
+    border-radius: 20px;
+    color: white;
+    font-size: 14px;
+    backdrop-filter: blur(5px);
+    animation: fadeOut 3s forwards;
+    pointer-events: none;
+  }
+
+  @keyframes fadeOut {
+    0% { opacity: 1; }
+    70% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  .control-button {
+    bottom: 30px;
+    right: 30px;
+    width: 60px;
+    height: 60px;
+    background: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   }
 }
 
@@ -1197,6 +1357,62 @@ canvas {
   .mobile-control-panel {
     padding-bottom: max(20px, env(safe-area-inset-bottom));
   }
+}
+
+/* 桌面端按钮样式 */
+.desktop-buttons {
+  display: none; /* 默认隐藏 */
+}
+
+/* 桌面端样式 */
+@media (min-width: 769px) {
+  .control-button {
+    display: none;
+  }
+
+  .mobile-control-panel {
+    display: none;
+  }
+
+  .desktop-buttons {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    gap: 10px;
+    z-index: 100;
+    padding: 0;
+    width: auto;
+    max-width: 90%;
+  }
+
+  .desktop-buttons .launch-btn {
+    padding: 12px 20px;
+    font-size: 16px;
+    margin-bottom: 0;
+    white-space: nowrap;
+    width: auto;
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    backdrop-filter: blur(5px);
+  }
+
+  .desktop-buttons .launch-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-2px);
+  }
+}
+
+/* 移动端样式 */
+@media (max-width: 768px) {
+  .desktop-buttons {
+    display: none;
+  }
+  /* ... 其他移动端样式保持不变 ... */
 }
 </style>
 
