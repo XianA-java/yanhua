@@ -138,6 +138,10 @@ const handleResize = () => {
   bgCanvas.value.width = window.innerWidth
   bgCanvas.value.height = window.innerHeight
 
+  // 重置缩放和偏移
+  scale.value = 1
+  offset.value = { x: 0, y: 0 }
+
   // 重新初始化背景
   if (bgCtx) {
     bgCtx.fillStyle = 'black'
@@ -734,9 +738,12 @@ function animate() {
   animationId = requestAnimationFrame(animate)
   ctx.clearRect(0, 0, width, height)
   
-  // 应用缩放
+  // 应用缩放和平移
   ctx.save()
+  ctx.translate(width / 2, height / 2)
   ctx.scale(scale.value, scale.value)
+  ctx.translate(-width / 2 + offset.value.x / scale.value, 
+                -height / 2 + offset.value.y / scale.value)
   
   // 更新火箭
   for (let i = rockets.length - 1; i >= 0; i--) {
@@ -968,9 +975,11 @@ function animateBackground() {
   bgCtx.fillStyle = 'rgba(5, 10, 20, 0.3)'
   bgCtx.fillRect(0, 0, width, height)
   
-  // 应用缩放
   bgCtx.save()
+  bgCtx.translate(width / 2, height / 2)
   bgCtx.scale(scale.value, scale.value)
+  bgCtx.translate(-width / 2 + offset.value.x / scale.value, 
+                  -height / 2 + offset.value.y / scale.value)
   
   drawAurora()
   
@@ -1011,6 +1020,8 @@ const isPanelDragging = ref(false)
 // 添加缩放相关的状态
 const scale = ref(1)
 const initialDistance = ref(0)
+const offset = ref({ x: 0, y: 0 }) // 添加偏移量
+const viewportCenter = ref({ x: 0, y: 0 }) // 添加视口中心点
 
 // 处理多点触控缩放
 const handleGestureStart = (e) => {
@@ -1038,6 +1049,11 @@ const handleTouchStart = (e) => {
       touch2.clientX - touch1.clientX,
       touch2.clientY - touch1.clientY
     )
+    // 记录缩放中心点
+    viewportCenter.value = {
+      x: (touch1.clientX + touch2.clientX) / 2,
+      y: (touch1.clientY + touch2.clientY) / 2
+    }
     return
   }
   
@@ -1065,13 +1081,36 @@ const handleTouchMove = (e) => {
       touch2.clientY - touch1.clientY
     )
     const newScale = currentDistance / initialDistance.value
+    const oldScale = scale.value
     scale.value = Math.min(Math.max(0.5, newScale), 2)
+    
+    // 计算新的中心点
+    const newCenter = {
+      x: (touch1.clientX + touch2.clientX) / 2,
+      y: (touch1.clientY + touch2.clientY) / 2
+    }
+    
+    // 更新偏移量以保持缩放中心点不变
+    offset.value = {
+      x: offset.value.x + (newCenter.x - viewportCenter.value.x),
+      y: offset.value.y + (newCenter.y - viewportCenter.value.y)
+    }
+    
+    viewportCenter.value = newCenter
     return
   }
   
-  if (isPanelDragging.value) {
-    const deltaY = e.touches[0].clientY - touchStartY.value
-    // 处理面板拖动逻辑
+  // 处理单指拖动
+  if (e.touches.length === 1) {
+    const touch = e.touches[0]
+    const deltaX = touch.clientX - touchStartX.value
+    const deltaY = touch.clientY - touchStartY.value
+    offset.value = {
+      x: offset.value.x + deltaX,
+      y: offset.value.y + deltaY
+    }
+    touchStartX.value = touch.clientX
+    touchStartY.value = touch.clientY
   }
 }
 
@@ -1097,6 +1136,12 @@ const handleTouchEnd = (e) => {
     
     addFirework(randomType, '', x, y)
   }
+}
+
+// 添加双击重置函数
+const handleDoubleTap = () => {
+  scale.value = 1
+  offset.value = { x: 0, y: 0 }
 }
 
 onMounted(() => {
@@ -1159,12 +1204,14 @@ onBeforeUnmount(() => {
   background: black;
   overflow: hidden;
   touch-action: none; /* 防止默认的触摸行为 */
+  transform-origin: center center;
 }
 
 canvas {
   position: absolute;
   top: 0;
   left: 0;
+  transform-origin: center center;
 }
 
 .buttons {
