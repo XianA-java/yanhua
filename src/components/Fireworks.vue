@@ -855,6 +855,13 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* 媒体查询：小屏幕时调整按钮样式 */
+@media (max-width: 600px) {
+  .launch-btn {
+    padding: 8px 12px; /* 减小按钮内边距 */
+    font-size: 14px; /* 减小字体大小 */
+  }
+}
 .fireworks-container {
   position: fixed;
   top: 0;
@@ -872,23 +879,26 @@ canvas {
 }
 
 .buttons {
+  display: flex;
+  flex-direction: column; /* 垂直排列 */
   position: fixed;
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  display: flex;
-  gap: 10px;
+  gap: 10px; /* 按钮间距 */
   z-index: 100;
 }
 
 .launch-btn {
-  padding: 10px 20px;
+  padding: 12px 20px; /* 默认按钮内边距 */
   background: rgba(255, 255, 255, 0.2);
   color: white;
   border: 1px solid white;
   border-radius: 5px;
   cursor: pointer;
   transition: all 0.3s ease;
+  width: 100%; /* 按钮全宽 */
+  margin-bottom: 10px; /* 按钮间距 */
 }
 
 .launch-btn:hover {
@@ -896,9 +906,13 @@ canvas {
   transform: translateY(-2px);
 }
 
+.launch-btn:active {
+  transform: scale(0.95); /* 按钮缩小效果 */
+}
+
 .sound-btn {
   background: rgba(255, 255, 255, 0.3);
-  font-weight: bold;
+  transform: translateY(-2px);
 }
 
 .text-input-container {
@@ -955,5 +969,8 @@ canvas {
 
 .connection-status.connected {
   background: rgba(0, 128, 0, 0.5);
+}
+.launch-btn:active {
+  transform: scale(0.95); /* 按钮缩小效果 */
 }
 </style>
