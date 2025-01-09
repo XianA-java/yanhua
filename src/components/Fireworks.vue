@@ -2,7 +2,10 @@
   <div class="fireworks-container"
        @touchstart="handleTouchStart"
        @touchmove="handleTouchMove"
-       @touchend="handleTouchEnd">
+       @touchend="handleTouchEnd"
+       @gesturestart="handleGestureStart"
+       @gesturechange="handleGestureChange"
+       @gestureend="handleGestureEnd">
     <audio id="launchSound" src="/sounds/launch.mp3" preload="auto"></audio>
     <audio id="explosionSound" src="/sounds/explosion.mp3" preload="auto"></audio>
 
@@ -712,9 +715,13 @@ function createFirework(x, y, type = 'normal', text = '') {
 function launchRocket(targetX, targetY, type, text = '') {
   const colors = ['#ff8888', '#88ff88', '#8888ff']
   const color = colors[Math.floor(Math.random() * colors.length)]
+  const isMobile = window.innerWidth <= 768
+  const startX = isMobile ? (Math.random() * width) : width / 2
+  const startY = height + 10
+  
   rockets.push(new Rocket(
-    width / 2,
-    height,
+    startX,
+    startY,
     targetX,
     targetY,
     color,
@@ -726,7 +733,11 @@ function launchRocket(targetX, targetY, type, text = '') {
 function animate() {
   animationId = requestAnimationFrame(animate)
   ctx.clearRect(0, 0, width, height)
-
+  
+  // 应用缩放
+  ctx.save()
+  ctx.scale(scale.value, scale.value)
+  
   // 更新火箭
   for (let i = rockets.length - 1; i >= 0; i--) {
     rockets[i].draw()
@@ -750,12 +761,16 @@ function animate() {
   if (particles.length > 1000) {
     particles = particles.filter(p => p.active)
   }
+  
+  ctx.restore()
 }
 
 // 修改发射烟花的函数
 function addFirework(type = 'normal', text = '', x = null, y = null) {
-  const targetX = x ?? Math.random() * width
-  const targetY = y ?? height * 0.3
+  // 在移动端，调整烟花的发射范围
+  const isMobile = window.innerWidth <= 768
+  const targetX = x ?? (Math.random() * width * (isMobile ? 1.5 : 1) - (isMobile ? width * 0.25 : 0))
+  const targetY = y ?? (isMobile ? height * 0.2 : height * 0.3)
   
   // 发送烟花数据到服务器
   if (isConnected.value) {
@@ -950,11 +965,15 @@ function drawAurora() {
 // 修改背景动画函数
 function animateBackground() {
   requestAnimationFrame(animateBackground)
-  bgCtx.fillStyle = 'rgba(5, 10, 20, 0.3)' // 深色背景
+  bgCtx.fillStyle = 'rgba(5, 10, 20, 0.3)'
   bgCtx.fillRect(0, 0, width, height)
   
-  drawAurora() // 添加极光效果
-
+  // 应用缩放
+  bgCtx.save()
+  bgCtx.scale(scale.value, scale.value)
+  
+  drawAurora()
+  
   // 更新星星
   stars.forEach(star => {
     star.update()
@@ -966,6 +985,8 @@ function animateBackground() {
     meteor.update()
     meteor.draw()
   })
+  
+  bgCtx.restore()
 }
 
 // 修改创建星空背景函数
@@ -987,8 +1008,39 @@ const touchStartY = ref(0)
 const touchStartTime = ref(0)
 const isPanelDragging = ref(false)
 
+// 添加缩放相关的状态
+const scale = ref(1)
+const initialDistance = ref(0)
+
+// 处理多点触控缩放
+const handleGestureStart = (e) => {
+  e.preventDefault()
+  initialDistance.value = e.scale
+}
+
+const handleGestureChange = (e) => {
+  e.preventDefault()
+  const newScale = e.scale / initialDistance.value
+  scale.value = Math.min(Math.max(0.5, newScale), 2) // 限制缩放范围在 0.5-2 倍之间
+}
+
+const handleGestureEnd = (e) => {
+  e.preventDefault()
+}
+
 // 添加触摸相关函数
 const handleTouchStart = (e) => {
+  if (e.touches.length === 2) {
+    // 双指触摸，准备缩放
+    const touch1 = e.touches[0]
+    const touch2 = e.touches[1]
+    initialDistance.value = Math.hypot(
+      touch2.clientX - touch1.clientX,
+      touch2.clientY - touch1.clientY
+    )
+    return
+  }
+  
   if (e.target.closest('.mobile-control-panel') || 
       e.target.closest('.control-button') ||
       e.target.closest('.text-input-container')) {
@@ -1004,6 +1056,19 @@ const handleTouchStart = (e) => {
 }
 
 const handleTouchMove = (e) => {
+  if (e.touches.length === 2) {
+    // 处理双指缩放
+    const touch1 = e.touches[0]
+    const touch2 = e.touches[1]
+    const currentDistance = Math.hypot(
+      touch2.clientX - touch1.clientX,
+      touch2.clientY - touch1.clientY
+    )
+    const newScale = currentDistance / initialDistance.value
+    scale.value = Math.min(Math.max(0.5, newScale), 2)
+    return
+  }
+  
   if (isPanelDragging.value) {
     const deltaY = e.touches[0].clientY - touchStartY.value
     // 处理面板拖动逻辑
@@ -1093,6 +1158,7 @@ onBeforeUnmount(() => {
   height: 100%;
   background: black;
   overflow: hidden;
+  touch-action: none; /* 防止默认的触摸行为 */
 }
 
 canvas {
