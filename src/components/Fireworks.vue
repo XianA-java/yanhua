@@ -71,6 +71,10 @@ const isMultiColor = ref(false)
 const ws = ref(null)
 const isConnected = ref(false)
 
+// 在 script setup 部分添加粒子池管理
+const PARTICLE_POOL_SIZE = 5000
+const particlePool = []
+
 // 在窗口大小变化时更新画布大小
 window.addEventListener('resize', () => {
   canvas.value.width = window.innerWidth
@@ -82,7 +86,7 @@ window.addEventListener('resize', () => {
 // 连接 WebSocket
 function connectWebSocket() {
   // 使用 Render 提供的 WSS 地址
-  const wsUrl = `wss://fireworks-server.onrender.com`
+  const wsUrl = `wss://fireworks-server.onrender.com/`
   
   try {
     ws.value = new WebSocket(wsUrl)
@@ -105,14 +109,45 @@ function connectWebSocket() {
     }
     
     ws.value.onmessage = (event) => {
-      const data = JSON.parse(event.data)
-      handleRemoteFirework(data)
+      let messageData;
+
+      // 检查消息类型
+      if (typeof event.data === 'string') {
+        messageData = event.data; // 直接使用字符串
+      } else if (event.data instanceof Blob) {
+        const reader = new FileReader();
+        reader.onload = function() {
+          messageData = reader.result; // 读取 Blob 内容
+          handleMessage(messageData); // 处理消息
+        };
+        reader.readAsText(event.data); // 将 Blob 转换为文本
+        return; // 退出函数，等待读取完成
+      }
+
+      // 处理消息
+      handleMessage(messageData);
     }
   } catch (error) {
     console.error('WebSocket connection error:', error)
     isConnected.value = false
     // 尝试重新连接
     setTimeout(connectWebSocket, 3000)
+  }
+}
+
+// 处理消息的函数
+function handleMessage(data) {
+  try {
+    const parsedData = JSON.parse(data);
+    handleRemoteFirework(parsedData);
+  } catch (error) {
+    console.error('Error parsing WebSocket message:', error);
+    console.log('Received message:', data); // 输出原始消息以便调试
+    // 处理连接确认消息
+    if (data.startsWith("Connected")) {
+      console.log(data); // 处理连接确认消息
+      isConnected.value = true; // 设置连接状态为 true
+    }
   }
 }
 
@@ -251,12 +286,19 @@ class Rocket {
 // 增强的粒子类
 class Particle {
   constructor(x, y, color, type = 'normal', angle = null, textPosition = null) {
+    this.init(x, y, color, type, angle, textPosition)
+  }
+
+  init(x, y, color, type = 'normal', angle = null, textPosition = null) {
     this.x = x
     this.y = y
     this.color = color
     this.size = Math.random() * 2 + 1.5
     this.alpha = 1
     this.type = type
+    this.active = true // 添加活跃状态标记
+    this.lifetime = 0  // 添加生命周期计数器
+    this.maxLifetime = type === 'text' ? 200 : 100 // 根据类型设置最大生命周期
     
     const baseSpeed = type === 'normal' ? 12 : 6
     const spread = type === 'normal' ? 1 : 0.5
@@ -340,6 +382,12 @@ class Particle {
   }
 
   update() {
+    this.lifetime++
+    if (this.lifetime >= this.maxLifetime) {
+      this.active = false
+      return false
+    }
+
     // 更新尾迹
     if (this.trail.length < this.maxTrailLength) {
       this.trail.push({ x: this.x, y: this.y, alpha: this.alpha })
@@ -392,6 +440,16 @@ class Particle {
         this.colorTransition = 0
       }
     }
+
+    // 检查粒子是否超出屏幕边界
+    if (this.x < -50 || this.x > width + 50 || 
+        this.y < -50 || this.y > height + 50 || 
+        this.alpha <= 0) {
+      this.active = false
+      return false
+    }
+
+    return true
   }
 
   draw() {
@@ -500,29 +558,51 @@ function getTextPoints(text, fontSize = 100) {
   return points
 }
 
+// 添加粒子池管理函数
+function getParticleFromPool(x, y, color, type, angle, textPosition) {
+  let particle
+  
+  // 从池中查找非活跃粒子
+  for (let i = 0; i < particlePool.length; i++) {
+    if (!particlePool[i].active) {
+      particle = particlePool[i]
+      particle.init(x, y, color, type, angle, textPosition)
+      return particle
+    }
+  }
+  
+  // 如果池中没有可用粒子且未达到最大数量，创建新粒子
+  if (particlePool.length < PARTICLE_POOL_SIZE) {
+    particle = new Particle(x, y, color, type, angle, textPosition)
+    particlePool.push(particle)
+    return particle
+  }
+  
+  // 如果池已满，返回null
+  return null
+}
+
 // 修改创建烟花函数
 function createFirework(x, y, type = 'normal', text = '') {
   playSound('explosionSound', 0.6)
   
-  // 基础颜色（用于非炫彩模式）
   const baseColor = getRandomColor()
   
   if (type === 'text') {
     const finalText = text || '新年快乐'
-    const points = getTextPoints(finalText, 80)  // 调整文字大小
-    
-    // 增加文字粒子的数量以使文字更清晰
-    const step = 3  // 减小采样步长，增加粒子密度
+    const points = getTextPoints(finalText, 80)
+    const step = 3
     
     points.forEach(point => {
       const color = isMultiColor.value ? getRandomColor() : baseColor
-      particles.push(new Particle(x, y, color, 'text', null, point))
+      const particle = getParticleFromPool(x, y, color, 'text', null, point)
+      if (particle) particles.push(particle)
     })
     
-    // 减少装饰粒子数量，让文字更突出
     for (let i = 0; i < 30; i++) {
       const color = isMultiColor.value ? getRandomColor() : '#ffffff'
-      particles.push(new Particle(x, y, color, 'normal'))
+      const particle = getParticleFromPool(x, y, color, 'normal')
+      if (particle) particles.push(particle)
     }
   } else {
     const particleCount = type === 'normal' ? 120 : 200
@@ -530,20 +610,23 @@ function createFirework(x, y, type = 'normal', text = '') {
     if (type === 'normal') {
       for (let i = 0; i < particleCount; i++) {
         const color = isMultiColor.value ? getRandomColor() : baseColor
-        particles.push(new Particle(x, y, color, 'normal'))
+        const particle = getParticleFromPool(x, y, color, 'normal')
+        if (particle) particles.push(particle)
       }
     } else if (type === 'circle' || type === 'heart' || type === 'spiral') {
       for (let i = 0; i < particleCount; i++) {
         const angle = (Math.PI * 2 * i) / particleCount
         const color = isMultiColor.value ? getRandomColor() : baseColor
-        particles.push(new Particle(x, y, color, type, angle))
+        const particle = getParticleFromPool(x, y, color, type, angle)
+        if (particle) particles.push(particle)
       }
     }
     
     // 添加装饰粒子
     for (let i = 0; i < 30; i++) {
       const color = isMultiColor.value ? getRandomColor() : '#ffffff'
-      particles.push(new Particle(x, y, color, 'normal'))
+      const particle = getParticleFromPool(x, y, color, 'normal')
+      if (particle) particles.push(particle)
     }
   }
 }
@@ -577,12 +660,17 @@ function animate() {
 
   // 更新粒子
   for (let i = particles.length - 1; i >= 0; i--) {
-    if (particles[i].alpha <= 0) {
+    const particle = particles[i]
+    if (!particle.active || !particle.update()) {
       particles.splice(i, 1)
-    } else {
-      particles[i].update()
-      particles[i].draw()
+      continue
     }
+    particle.draw()
+  }
+
+  // 定期清理长时间不活跃的粒子
+  if (particles.length > 1000) {
+    particles = particles.filter(p => p.active)
   }
 }
 
@@ -851,6 +939,10 @@ onBeforeUnmount(() => {
   if (ws.value) {
     ws.value.close()
   }
+  // 清空粒子池
+  particlePool.length = 0
+  particles.length = 0
+  rockets.length = 0
 })
 </script>
 
@@ -890,7 +982,7 @@ canvas {
 }
 
 .launch-btn {
-  padding: 12px 20px; /* 默认按钮内边距 */
+  padding: 12px 20px; /* 增加按钮内边距 */
   background: rgba(255, 255, 255, 0.2);
   color: white;
   border: 1px solid white;
