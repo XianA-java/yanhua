@@ -1116,7 +1116,7 @@ canvas {
     bottom: 0;
     left: 0;
     width: 100%;
-    background: rgba(0, 0, 0, 0.85);
+    background: rgba(0, 0, 0, 0);
     backdrop-filter: blur(10px);
     padding: 20px 15px calc(env(safe-area-inset-bottom) + 20px);
     border-top: 1px solid rgba(255, 255, 255, 0.1);
