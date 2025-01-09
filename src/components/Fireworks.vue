@@ -812,7 +812,8 @@ class Meteor {
 
   reset() {
     // 起始位置在屏幕上方较广的范围
-    this.x = Math.random() * width * 1.5 - width * 0.25
+    const extraWidth = width * 0.5
+    this.x = Math.random() * (width + extraWidth * 2) - extraWidth
     this.y = -100
     this.length = Math.random() * 100 + 150
     this.speed = Math.random() * 15 + 8
@@ -891,8 +892,11 @@ class Star {
   }
 
   reset() {
-    this.x = Math.random() * width
-    this.y = Math.random() * height
+    // 扩大星星的生成范围
+    const extraWidth = width * 0.5
+    const extraHeight = height * 0.5
+    this.x = Math.random() * (width + extraWidth * 2) - extraWidth
+    this.y = Math.random() * (height + extraHeight * 2) - extraHeight
     this.size = Math.random() * 2.5
     this.blinkSpeed = Math.random() * 0.02
     this.brightness = Math.random()
@@ -943,23 +947,36 @@ class Star {
 
 // 添加极光效果
 function drawAurora() {
-  const gradient = bgCtx.createLinearGradient(0, 0, 0, height)
+  // 计算扩展的绘制区域
+  const extraWidth = width * (scale.value - 1)
+  const extraHeight = height * (scale.value - 1)
+  const totalWidth = width + extraWidth
+  const totalHeight = height + extraHeight
+  
+  const gradient = bgCtx.createLinearGradient(
+    -extraWidth / 2, -extraHeight / 2,
+    -extraWidth / 2, totalHeight
+  )
+  
   gradient.addColorStop(0, 'rgba(10, 20, 40, 0.2)')
   gradient.addColorStop(0.3, 'rgba(15, 30, 60, 0.1)')
   gradient.addColorStop(0.6, 'rgba(20, 40, 80, 0.05)')
   gradient.addColorStop(1, 'rgba(30, 50, 90, 0.1)')
   
   bgCtx.fillStyle = gradient
-  bgCtx.fillRect(0, 0, width, height)
+  bgCtx.fillRect(
+    -extraWidth / 2, -extraHeight / 2,
+    totalWidth, totalHeight
+  )
 
   // 添加随机波动的极光
   const time = Date.now() * 0.001
   for (let i = 0; i < 3; i++) {
     bgCtx.beginPath()
-    bgCtx.moveTo(0, height * 0.3)
+    bgCtx.moveTo(-extraWidth / 2, totalHeight * 0.3)
     
-    for (let x = 0; x < width; x += 50) {
-      const y = Math.sin(x * 0.003 + time + i) * 50 + height * 0.3
+    for (let x = -extraWidth / 2; x < totalWidth + extraWidth / 2; x += 50) {
+      const y = Math.sin(x * 0.003 + time + i) * 50 + totalHeight * 0.3
       bgCtx.lineTo(x, y)
     }
     
@@ -972,24 +989,46 @@ function drawAurora() {
 // 修改背景动画函数
 function animateBackground() {
   requestAnimationFrame(animateBackground)
-  bgCtx.fillStyle = 'rgba(5, 10, 20, 0.3)'
+  // 清除整个画布
+  bgCtx.clearRect(0, 0, width, height)
+  
+  // 先填充黑色背景，确保覆盖整个可视区域
+  bgCtx.fillStyle = 'black'
   bgCtx.fillRect(0, 0, width, height)
   
   bgCtx.save()
+  
+  // 计算缩放后需要的额外空间
+  const scaledWidth = width * scale.value
+  const scaledHeight = height * scale.value
+  const extraWidth = (scaledWidth - width) / 2
+  const extraHeight = (scaledHeight - height) / 2
+  
+  // 扩大绘制区域以覆盖缩放后的空间
   bgCtx.translate(width / 2, height / 2)
   bgCtx.scale(scale.value, scale.value)
-  bgCtx.translate(-width / 2 + offset.value.x / scale.value, 
-                  -height / 2 + offset.value.y / scale.value)
+  bgCtx.translate(
+    -width / 2 + offset.value.x / scale.value - extraWidth / scale.value,
+    -height / 2 + offset.value.y / scale.value - extraHeight / scale.value
+  )
+  
+  // 使用半透明的深色覆盖层
+  bgCtx.fillStyle = 'rgba(5, 10, 20, 0.3)'
+  bgCtx.fillRect(
+    -extraWidth / scale.value,
+    -extraHeight / scale.value,
+    width + (extraWidth * 2) / scale.value,
+    height + (extraHeight * 2) / scale.value
+  )
   
   drawAurora()
   
-  // 更新星星
+  // 更新星星和流星
   stars.forEach(star => {
     star.update()
     star.draw()
   })
-
-  // 更新流星
+  
   meteors.forEach(meteor => {
     meteor.update()
     meteor.draw()
