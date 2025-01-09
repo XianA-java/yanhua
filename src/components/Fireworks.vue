@@ -953,9 +953,15 @@ function drawAurora() {
   const totalWidth = width + extraWidth
   const totalHeight = height + extraHeight
   
+  // 扩大极光的绘制范围
+  const drawWidth = width * 2  // 扩大绘制范围
+  const drawHeight = height * 2
+  const startX = -drawWidth / 2
+  const startY = -drawHeight / 2
+  
   const gradient = bgCtx.createLinearGradient(
-    -extraWidth / 2, -extraHeight / 2,
-    -extraWidth / 2, totalHeight
+    startX, startY,
+    startX, drawHeight
   )
   
   gradient.addColorStop(0, 'rgba(10, 20, 40, 0.2)')
@@ -965,23 +971,23 @@ function drawAurora() {
   
   bgCtx.fillStyle = gradient
   bgCtx.fillRect(
-    -extraWidth / 2, -extraHeight / 2,
-    totalWidth, totalHeight
+    startX, startY,
+    drawWidth, drawHeight
   )
 
   // 添加随机波动的极光
   const time = Date.now() * 0.001
   for (let i = 0; i < 3; i++) {
     bgCtx.beginPath()
-    bgCtx.moveTo(-extraWidth / 2, totalHeight * 0.3)
+    bgCtx.moveTo(startX, drawHeight * 0.3)
     
-    for (let x = -extraWidth / 2; x < totalWidth + extraWidth / 2; x += 50) {
-      const y = Math.sin(x * 0.003 + time + i) * 50 + totalHeight * 0.3
+    for (let x = startX; x < startX + drawWidth; x += 50) {
+      const y = Math.sin(x * 0.003 + time + i) * 50 + drawHeight * 0.3
       bgCtx.lineTo(x, y)
     }
     
     bgCtx.strokeStyle = `rgba(${30 + i * 20}, ${150 + i * 30}, ${100 + i * 50}, 0.1)`
-    bgCtx.lineWidth = 50
+    bgCtx.lineWidth = 100  // 增加极光的宽度
     bgCtx.stroke()
   }
 }
@@ -989,36 +995,26 @@ function drawAurora() {
 // 修改背景动画函数
 function animateBackground() {
   requestAnimationFrame(animateBackground)
-  // 清除整个画布
   bgCtx.clearRect(0, 0, width, height)
   
-  // 先填充黑色背景，确保覆盖整个可视区域
   bgCtx.fillStyle = 'black'
   bgCtx.fillRect(0, 0, width, height)
   
   bgCtx.save()
   
-  // 计算缩放后需要的额外空间
-  const scaledWidth = width * scale.value
-  const scaledHeight = height * scale.value
-  const extraWidth = (scaledWidth - width) / 2
-  const extraHeight = (scaledHeight - height) / 2
-  
   // 扩大绘制区域以覆盖缩放后的空间
   bgCtx.translate(width / 2, height / 2)
   bgCtx.scale(scale.value, scale.value)
   bgCtx.translate(
-    -width / 2 + offset.value.x / scale.value - extraWidth / scale.value,
-    -height / 2 + offset.value.y / scale.value - extraHeight / scale.value
+    -width / 2 + offset.value.x / scale.value,
+    -height / 2 + offset.value.y / scale.value
   )
   
   // 使用半透明的深色覆盖层
   bgCtx.fillStyle = 'rgba(5, 10, 20, 0.3)'
   bgCtx.fillRect(
-    -extraWidth / scale.value,
-    -extraHeight / scale.value,
-    width + (extraWidth * 2) / scale.value,
-    height + (extraHeight * 2) / scale.value
+    -width, -height,  // 扩大覆盖范围
+    width * 3, height * 3
   )
   
   drawAurora()
@@ -1241,8 +1237,7 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   background: black;
-  overflow: hidden;
-  touch-action: none; /* 防止默认的触摸行为 */
+  overflow: hidden; /* 防止默认的触摸行为 */
   transform-origin: center center;
 }
 
