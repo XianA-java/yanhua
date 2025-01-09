@@ -14,27 +14,38 @@
         placeholder="输入烟花文字"
         maxlength="8"
         class="text-input"
+        @keyup.enter="launchCustomText"
       >
       <button @click="launchCustomText" class="launch-btn">发射</button>
       <button @click="closeTextInput" class="launch-btn close-btn">×</button>
     </div>
 
-    <div class="buttons">
-      <button @click="initAudio" class="launch-btn sound-btn" v-if="!isAudioInitialized">
-        点击启用音效
-      </button>
-      <button @click="toggleSound" class="launch-btn sound-btn" v-else>
-        {{ isSoundEnabled ? '🔊 音效开启' : '🔈 音效关闭' }}
-      </button>
-      <button @click="toggleColorMode" class="launch-btn">
-        {{ isMultiColor ? '🌈 炫彩模式' : '🎨 单色模式' }}
-      </button>
-      <button @click="addFirework('normal')" class="launch-btn">普通烟花</button>
-      <button @click="addFirework('circle')" class="launch-btn">环形烟花</button>
-      <button @click="addFirework('heart')" class="launch-btn">心形烟花</button>
-      <button @click="addFirework('spiral')" class="launch-btn">螺旋烟花</button>
-      <button @click="openTextInput" class="launch-btn">自定义文字</button>
+    <!-- 添加浮动控制按钮 -->
+    <div class="control-button" @click="toggleControlPanel">
+      <span class="control-icon">{{ isControlPanelOpen ? '×' : '☰' }}</span>
     </div>
+
+    <!-- 修改按钮面板 -->
+    <transition name="slide-up">
+      <div class="mobile-control-panel" v-show="isControlPanelOpen">
+        <div class="button-grid">
+          <button @click="initAudio" class="launch-btn sound-btn" v-if="!isAudioInitialized">
+            点击启用音效
+          </button>
+          <button @click="toggleSound" class="launch-btn sound-btn" v-else>
+            {{ isSoundEnabled ? '🔊 音效开启' : '🔈 音效关闭' }}
+          </button>
+          <button @click="toggleColorMode" class="launch-btn">
+            {{ isMultiColor ? '🌈 炫彩模式' : '🎨 单色模式' }}
+          </button>
+          <button @click="addFirework('normal')" class="launch-btn">普通烟花</button>
+          <button @click="addFirework('circle')" class="launch-btn">环形烟花</button>
+          <button @click="addFirework('heart')" class="launch-btn">心形烟花</button>
+          <button @click="addFirework('spiral')" class="launch-btn">螺旋烟花</button>
+          <button @click="openTextInput" class="launch-btn">自定义文字</button>
+        </div>
+      </div>
+    </transition>
 
     <!-- 添加连接状态指示器 -->
     <div class="connection-status" :class="{ connected: isConnected }">
@@ -74,6 +85,14 @@ const isConnected = ref(false)
 // 在 script setup 部分添加粒子池管理
 const PARTICLE_POOL_SIZE = 5000
 const particlePool = []
+
+// 添加控制面板状态
+const isControlPanelOpen = ref(false)
+
+// 添加控制面板切换函数
+const toggleControlPanel = () => {
+  isControlPanelOpen.value = !isControlPanelOpen.value
+}
 
 // 在窗口大小变化时更新画布大小
 window.addEventListener('resize', () => {
@@ -1065,4 +1084,119 @@ canvas {
 .launch-btn:active {
   transform: scale(0.95); /* 按钮缩小效果 */
 }
+
+/* 移动端样式 */
+@media (max-width: 768px) {
+  .control-button {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 50px;
+    height: 50px;
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 1001;
+    backdrop-filter: blur(5px);
+    transition: all 0.3s ease;
+  }
+
+  .control-icon {
+    color: white;
+    font-size: 24px;
+    line-height: 1;
+  }
+
+  .mobile-control-panel {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(10px);
+    padding: 20px 15px calc(env(safe-area-inset-bottom) + 20px);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    z-index: 1000;
+  }
+
+  .button-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 10px;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+
+  .launch-btn {
+    padding: 12px 8px;
+    font-size: 14px;
+    white-space: nowrap;
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+  }
+
+  .text-input-container {
+    bottom: auto;
+    top: 20px;
+    width: 90%;
+    max-width: 300px;
+  }
+}
+
+/* 添加过渡动画 */
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-up-enter-from,
+.slide-up-leave-to {
+  opacity: 0;
+  transform: translateY(100%);
+}
+
+/* 桌面端样式 */
+@media (min-width: 769px) {
+  .control-button {
+    display: none;
+  }
+
+  .mobile-control-panel {
+    display: none;
+  }
+
+  .buttons {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    gap: 10px;
+    z-index: 100;
+    background: none;
+    padding: 0;
+  }
+}
+
+/* 添加安全区域适配 */
+@supports (padding: max(0px)) {
+  .mobile-control-panel {
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+  }
+}
 </style>
+
